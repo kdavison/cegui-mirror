@@ -34,8 +34,6 @@
 #include "CEGUI/XMLSerializer.h"
 #include "CEGUI/FontGlyph.h"
 
-#include <map>
-
 #if defined(_MSC_VER)
 #   pragma warning(push)
 #   pragma warning(disable : 4251)
@@ -57,8 +55,7 @@ namespace CEGUI
 */
 class CEGUIEXPORT Font :
     public PropertySet,
-    public EventSet,
-    public AllocatedObject<Font>
+    public EventSet
 {
 public:
     //! Colour value used whenever a colour is not specified.
@@ -76,6 +73,48 @@ public:
     //! Destructor.
     virtual ~Font();
 
+    /*!
+    \brief
+        Helper function that converts point sizes of Fonts into 
+        pixel sizes. Points are a physical unit. 1 point is
+        equal to 1/72th of an inch. The function takes the dots per
+        inch as well as the pixel size. 
+
+    \param pointSize
+        The point size to be converted.
+
+    \param dotsPerInch
+        The dots per inch resolution to be used for the conversion.
+
+    \return
+        Returns the calculated Font size in pixels.
+
+    \see Render::ReferenceDpiValue
+    \see Font::convertPixelsToPoints
+    */
+    static float convertPointsToPixels(const float pointSize, const int dotsPerInch);
+
+        /*!
+    \brief
+        Helper function that converts pixel sizes of Fonts into 
+        point sizes. Points are a physical unit. 1 point is
+        equal to 1/72th of an inch. The function takes the dots per
+        inch as well as the pixel size. 
+
+    \param pixelSize
+        The pixel size to be converted.
+
+    \param dotsPerInch
+        The dots per inch resolution to be used for the conversion.
+
+    \return
+        Returns the calculated Font size in points.
+
+    \see Render::ReferenceDpiValue
+    \see Font::convertPointsToPixels
+    */
+    static float convertPixelsToPoints(const float pixelSize, const int dotsPerInch);
+
     //! Return the string holding the font name.
     const String& getName() const;
 
@@ -90,21 +129,67 @@ public:
         Return whether this Font can draw the specified code-point
 
     \param cp
-        utf32 code point that is the subject of the query.
+        char32_t code point that is the subject of the query.
 
     \return
         true if the font contains a mapping for code point \a cp,
         false if it does not contain a mapping for \a cp.
     */
-    bool isCodepointAvailable(utf32 cp) const
+    bool isCodepointAvailable(char32_t cp) const
     { return (d_cp_map.find(cp) != d_cp_map.end()); }
 
     /*!
     \brief
-        Draw text into a specified area of the display.
+        Create render geometry for the text that should be rendered into a
+        specified area of the display.
 
-    \param buffer
-        GeometryBuffer object where the geometry for the text be queued.
+    \param text
+        String object containing the text to be drawn.
+
+    \param nextGlyphPosX
+        The x-coordinate where subsequent text should be rendered to ensure correct
+        positioning (which is not possible to determine accurately by using the
+        extent measurement functions).
+
+    \param position
+        Reference to a Vector2 object describing the location at which the text
+        is to be drawn.
+
+    \param clip_rect
+        Rect object describing the clipping area for the drawing.
+        No drawing will occur outside this Rect.
+
+    \param colours
+        ColourRect object describing the colours to be applied when drawing the
+        text.  NB: The colours specified in here are applied to each glyph,
+        rather than the text as a whole.
+
+    \param space_extra
+        Number of additional pixels of spacing to be added to space characters.
+
+    \param x_scale
+        Scaling factor to be applied to each glyph's x axis, where 1.0f is
+        considered to be 'normal'.
+
+    \param y_scale
+        Scaling factor to be applied to each glyph's y axis, where 1.0f is
+        considered to be 'normal'.
+
+    \return
+        Returns a list of GeometryBuffers representing the render geometry of
+        the text.
+    */
+    std::vector<GeometryBuffer*> createTextRenderGeometry(
+        const String& text, float& nextGlyphPosX,
+        const glm::vec2& position, const Rectf* clip_rect,
+        const bool clipping_enabled, const ColourRect& colours,
+        const float space_extra = 0.0f, const float x_scale = 1.0f,
+        const float y_scale = 1.0f) const;
+
+        /*!
+    \brief
+        Create render geometry for the text that should be rendered into a
+        specified area of the display.
 
     \param text
         String object containing the text to be drawn.
@@ -134,16 +219,17 @@ public:
         considered to be 'normal'.
 
     \return
-        The x co-ord where subsequent text should be rendered to ensure correct
-        positioning (which is not possible to determine accurately by using the
-        extent measurement functions).
+        Returns a list of GeometryBuffers representing the render geometry of
+        the text.
     */
-    float drawText(GeometryBuffer& buffer, const String& text,
-                   const Vector2f& position, const Rectf* clip_rect,
-                   const ColourRect& colours, const float space_extra = 0.0f,
-                   const float x_scale = 1.0f, const float y_scale = 1.0f) const;
+    std::vector<GeometryBuffer*> createTextRenderGeometry(
+        const String& text,
+        const glm::vec2& position, const Rectf* clip_rect,
+        const bool clipping_enabled, const ColourRect& colours,
+        const float space_extra = 0.0f, const float x_scale = 1.0f,
+        const float y_scale = 1.0f) const;
 
-    /*!
+  /*!
     \brief
         Set the native resolution for this Font
 
@@ -268,6 +354,16 @@ public:
     \see getTextAdvance
     */
     float getTextExtent(const String& text, float x_scale = 1.0f) const;
+
+    /*!
+    \brief
+        Calculates and returns the size this glyph takes up if it is the last character, or 
+        the size the glyph takes until the next character begins (considering kerning).
+    */
+    void getGlyphExtents(
+        char32_t currentCodePoint,
+        float& cur_extent,
+        float& adv_extent, float x_scale) const;
 
     /*!
     \brief
@@ -399,13 +495,23 @@ public:
         or 0 if the codepoint does not have a glyph defined.
 
     \param codepoint
-        utf32 codepoint to return the glyphDat structure for.
+        char32_t codepoint to return the glyphDat structure for.
 
     \return
         Pointer to the glyphDat struct for \a codepoint, or 0 if no glyph
         is defined for \a codepoint.
     */
-    const FontGlyph* getGlyphData(utf32 codepoint) const;
+    const FontGlyph* getGlyphData(char32_t codepoint) const;
+
+
+    /*!
+    \brief
+        Update the font as needed, according to the current parameters.
+        This should only be called if really necessary and will only 
+        internally update the Font, without firing events or updating
+        any Windows using this Font.
+    */
+    virtual void updateFont() = 0;
 
 protected:
     //! Constructor.
@@ -427,12 +533,11 @@ protected:
     \param end_codepoint
         The highest codepoint that should be rasterised
     */
-    virtual void rasterise(utf32 start_codepoint, utf32 end_codepoint) const;
+    virtual void rasterise(char32_t start_codepoint, char32_t end_codepoint) const;
 
-    //! Update the font as needed, according to the current parameters.
-    virtual void updateFont() = 0;
 
-    //! implementaion version of writeXMLToStream.
+
+    //! implementation version of writeXMLToStream.
     virtual void writeXMLToStream_impl(XMLSerializer& xml_stream) const = 0;
 
     //! Register all properties of this class.
@@ -444,12 +549,31 @@ protected:
     /*!
     \brief
         Set the maximal glyph index. This reserves the respective
-        number of bits in the d_glyphPageLoaded array.
+        number of bits in the d_loadedGlyphPages array.
     */
-    void setMaxCodepoint(utf32 codepoint);
+    void setMaxCodepoint(char32_t codepoint);
 
     //! finds FontGlyph in map and returns it, or 0 if none.
-    virtual const FontGlyph* findFontGlyph(const utf32 codepoint) const;
+    virtual const FontGlyph* findFontGlyph(const char32_t codepoint) const;
+
+    //! The old way of rendering glyphs, without kerning and extended layouting
+    void renderGlyphsUsingDefaultFallback(const String& text, const glm::vec2& position,
+        const Rectf* clip_rect, const ColourRect& colours,
+        const float space_extra, const float x_scale, 
+        const float y_scale, ImageRenderSettings imgRenderSettings, 
+        glm::vec2& glyph_pos, GeometryBuffer*& textGeometryBuffer) const;
+
+    //! The recommended way of rendering a glyph
+    virtual void layoutAndRenderGlyphs(const String& text, const glm::vec2& position,
+        const Rectf* clip_rect, const ColourRect& colours,
+        const float space_extra, const float x_scale,
+        const float y_scale, ImageRenderSettings imgRenderSettings,
+        glm::vec2& glyph_pos, GeometryBuffer*& textGeometryBuffer) const
+    {
+        renderGlyphsUsingDefaultFallback(text, position, clip_rect,
+            colours, space_extra, x_scale, y_scale, imgRenderSettings,
+            glyph_pos, textGeometryBuffer);
+    }
 
     //! Name of this font.
     String d_name;
@@ -479,7 +603,7 @@ protected:
     float d_vertScaling;
 
     //! Maximal codepoint for font glyphs
-    utf32 d_maxCodepoint;
+    char32_t d_maxCodepoint;
 
     /*!
     \brief
@@ -494,11 +618,10 @@ protected:
         This array is big enough to hold at least max_codepoint bits.
         If this member is NULL, all glyphs are considered pre-rasterised.
     */
-    uint* d_glyphPageLoaded;
+    mutable std::vector<unsigned int> d_loadedGlyphPages;
 
     //! Definition of CodepointMap type.
-    typedef std::map<utf32, FontGlyph, std::less<utf32>
-        CEGUI_MAP_ALLOC(utf32, FontGlyph)> CodepointMap;
+    typedef std::map<char32_t, FontGlyph*, std::less<char32_t> > CodepointMap;
     //! Contains mappings from code points to Image objects
     mutable CodepointMap d_cp_map;
 };
